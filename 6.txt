@@ -1,0 +1,152 @@
+#include <iostream>
+#include <random>
+#include <chrono>
+#include <iomanip>
+#include <queue>
+using namespace std;
+
+int main() {
+    setlocale(LC_ALL, "ru");
+    mt19937 mt{ static_cast<mt19937::result_type>(
+        chrono::steady_clock::now().time_since_epoch().count()
+    ) };
+
+    const double sigma1 = 11.0, sigma2 = 17.0;
+    double a, b;
+    int k, m, N;
+    cout << "Введите параметры равномерного распределения [a, b]: ";
+    cin >> a >> b;
+    cout << "Введите k (количество прохождений фазы 1): ";
+    cin >> k;
+    cout << "Введите m (количество прохождений фазы 2): ";
+    cin >> m;
+    cout << "Введите количество заданий N: ";
+    cin >> N;
+
+    double T_service = k * sigma1 + m * sigma2;
+    double E_tau = (a + b) / 2.0;
+
+    cout << "\nВремя обслуживания одного задания: " << T_service << "\n";
+    cout << "Средний интервал между поступлениями: " << E_tau << "\n";
+
+    if (E_tau > T_service) {
+        cout << "Система УСТОЙЧИВА (lambda < nu)\n";
+        cout << "Условие: a + b > " << 2 * T_service << "\n";
+    }
+    else {
+        cout << "Система НЕУСТОЙЧИВА (lambda >= nu)\n";
+        cout << "Очередь будет бесконечно расти!\n";
+        cout << "Необходимо: a + b > " << 2 * T_service << "\n";
+        return 0;
+    }
+
+    uniform_real_distribution<double> tau_dist{ a, b };
+    // три параллельные очереди
+    queue<double> arrival_times;  // время поступления задания
+    queue<int> phases;            // текущая фаза (1 или 2)
+    queue<int> counts;
+
+    int server_phase = 0;  // 0 - свободен / 1 - фаза 1 / 2 - фаза 2
+    double T1, T2;
+    double systemtime = 0.0;
+
+    double total_time_in_system = 0.0;
+    int completed_tasks = 0;
+
+    T1 = tau_dist(mt);
+    T2 = 1e9;
+
+    int i = 1;
+    cout << "\nМоделирование\n";
+    while (i <= N || !arrival_times.empty() || server_phase != 0) {
+        systemtime = (T1 < T2) ? T1 : T2;
+
+        if (T1 <= T2) {
+            // событие поступления задания
+            if (i <= N) {
+                if (server_phase == 0) {
+                    // сервер свободен - сразу на обслуживание
+                    server_phase = 1;
+                    T2 = systemtime + sigma1;
+                    arrival_times.push(systemtime);
+                    phases.push(1);
+                    counts.push(1);  // уже один раз прошёл
+                }
+                else {
+                    // если сервер занят очередь
+                    arrival_times.push(systemtime);
+                    phases.push(1);
+                    counts.push(0);
+                }
+                if (i < N) {
+                    T1 = systemtime + tau_dist(mt);
+                }
+                else {
+                    T1 = 1e9;
+                }
+                i++;
+            }
+        }
+        else {
+            // событие окончания фазы
+            double arr_time = arrival_times.front();
+            int cur_phase = phases.front();
+            int cur_count = counts.front();
+            arrival_times.pop();
+            phases.pop();
+            counts.pop();
+
+            bool task_completed = false;
+            if (cur_phase == 1) {
+                if (cur_count < k) {
+                    // ещё не закончил фазу 1 - повторяем
+                    T2 = systemtime + sigma1;
+                    arrival_times.push(arr_time);
+                    phases.push(1);
+                    counts.push(cur_count + 1);
+                }
+                else {
+                    // закончил фазу 1 - переходим к фазе 2
+                    T2 = systemtime + sigma2;
+                    arrival_times.push(arr_time);
+                    phases.push(2);
+                    counts.push(1);
+                }
+            }
+            else {  // cur_phase == 2
+                if (cur_count < m) {
+                    // ещё не закончил фазу 2 - повторяем
+                    T2 = systemtime + sigma2;
+                    arrival_times.push(arr_time);
+                    phases.push(2);
+                    counts.push(cur_count + 1);
+                }
+                else {
+                    // задание полностью обработано
+                    total_time_in_system += systemtime - arr_time;
+                    completed_tasks++;
+                    task_completed = true;
+                }
+            }
+
+            if (task_completed) {
+                if (arrival_times.empty()) {
+                    server_phase = 0;
+                    T2 = 1e9;
+                }
+                else {
+                    server_phase = phases.front();
+                    double service_time = (server_phase == 1) ? sigma1 : sigma2;
+                    T2 = systemtime + service_time;
+                }
+            }
+        }
+    }
+    double avg_time = total_time_in_system / completed_tasks;
+
+    cout << "\nОбработано заданий: " << completed_tasks << "\n";
+    cout << "Среднее время пребывания в системе: " << avg_time << "\n";
+    cout << "Теоретическое среднее время обслуживания: " << T_service << "\n";
+
+    return 0;
+}

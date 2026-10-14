@@ -1,0 +1,72 @@
+#include <iostream>
+#include <random>
+#include <chrono>
+#include <iomanip>
+using namespace std;
+
+int main() {
+    setlocale(LC_ALL, "ru");
+
+    mt19937 mt{ static_cast<mt19937::result_type>(
+        chrono::steady_clock::now().time_since_epoch().count()
+    ) };
+
+    uniform_real_distribution<double> tau{ 1.0, 7.0 };
+    uniform_real_distribution<double> sigma{ 1.0, 6.0 };
+
+    int K = 0, TYP = 1, i = 1, L = 0, N = 10;
+    double systemtime = 0.0, T1, T2, ML = 0.0;
+
+    T1 = tau(mt);
+    T2 = T1 + sigma(mt);
+
+    while (i <= N) {
+        systemtime = min(T1, T2);
+
+        if (T1 <= T2) {
+            TYP = 1;
+        }
+        else {
+            TYP = 2;
+        }
+
+        cout << "state (K = " << K << " L = " << L << ") t = " << systemtime;
+
+        if (TYP == 1) {
+            cout << "; In i = " << i << " TYP = " << TYP << "\n";
+            ML += L;
+
+            if (i < N) {
+                T1 = systemtime + tau(mt);
+            }
+            else {
+                T1 = 1e9;
+            }
+            i++;
+
+            if (K == 0) {
+                K = 1;
+                T2 = systemtime + sigma(mt);
+            }
+            else {
+                L++;
+            }
+        }
+        else {
+            cout << "; Out: TYP = " << TYP << "\n";
+
+            if (L == 0) {
+                K = 0;
+                T2 = 1e9;
+            }
+            else {
+                L--;
+                T2 = systemtime + sigma(mt);
+            }
+        }
+    }
+
+    cout << "Средняя длина очереди: " << ML / N << "\n";
+
+    return 0;
+}

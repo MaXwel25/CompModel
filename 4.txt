@@ -1,0 +1,162 @@
+#include <iostream>
+#include <random>
+#include <chrono>
+#include <iomanip>
+#include <vector>
+
+using namespace std;
+
+int main() {
+    setlocale(LC_ALL, "ru");
+
+    mt19937 mt{ static_cast<mt19937::result_type>(
+        chrono::steady_clock::now().time_since_epoch().count()
+    ) };
+
+    //новые параметры
+    int n = 10;
+    double a, b;
+    cout << "\nВведите a и b: ";
+    cin >> a >> b;
+    double T = 1000.0; //длительность
+    int task = 100;
+    uniform_real_distribution<double> dist{ a, b };
+
+    //uniform_real_distribution<double> tau{ 1.0, 7.0 };
+    //uniform_real_distribution<double> sigma{ 1.0, 6.0 };
+
+    //int K = 0, TYP = 1, i = 1, L = 0, N = 10;
+    /*
+    double systemtime = 0.0, T1, T2, ML = 0.0;
+
+    T1 = tau(mt);
+    T2 = T1 + sigma(mt);
+
+    while (i <= N) {
+        systemtime = min(T1, T2);
+
+        if (T1 <= T2) {
+            TYP = 1;
+        }
+        else {
+            TYP = 2;
+        }
+
+        cout << "state (K = " << K << " L = " << L << ") t = " << systemtime;
+
+        if (TYP == 1) {
+            cout << "; In i = " << i << " TYP = " << TYP << "\n";
+            ML += L;
+
+            if (i < N) {
+                T1 = systemtime + tau(mt);
+            }
+            else {
+                T1 = 1e9;
+            }
+            i++;
+
+            if (K == 0) {
+                K = 1;
+                T2 = systemtime + sigma(mt);
+            }
+            else {
+                L++;
+            }
+        }
+        else {
+            cout << "; Out: TYP = " << TYP << "\n";
+
+            if (L == 0) {
+                K = 0;
+                T2 = 1e9;
+            }
+            else {
+                L--;
+                T2 = systemtime + sigma(mt);
+            }
+        }
+    }
+
+    cout << "Средняя длина очереди: " << ML / N << "\n";
+
+    */
+
+    vector<vector<double>> streams(n);
+    
+    for (int i = 0; i < n; i++)
+    {
+        long double time = 0.0;
+            while (time < T)
+            {
+                double interval = dist(mt);
+                time += interval;
+                if (time <= T)
+                {
+                    streams[i].push_back(time);
+                }
+            }
+    }
+
+    double total_task = 0;
+    for (int i = 0; i < n; i++)
+    {
+        double lambda_i = streams[i].size() / T;
+        cout << "Поток " << i + 1 << ": " << streams[i].size() << " интенсивность = " << lambda_i << "\n";
+        total_task += streams[i].size();
+    }
+
+    long double real_lambda = n / ((a + b) / 2.0);
+    cout << "lambda_teor = " << n << "/" << (a + b) / 2.0 << " = " << real_lambda << "\n";
+
+    vector<double> superposition;
+    for (int i = 0; i < n; i++)
+    {
+        for (double t : streams[i]) {
+            superposition.push_back(t);
+        }
+    }
+    sort(superposition.begin(), superposition.end());
+
+    vector<double> interval;
+    for (size_t i = 1; i < superposition.size(); i++) {
+        interval.push_back(superposition[i] - superposition[i - 1]);
+    }
+
+    double sum_int = 0;
+    for (double inter : interval) {
+        sum_int += inter;
+    }
+
+    double avg_inter = sum_int / interval.size();
+    long double emp_lambda = 1.0 / avg_inter;
+
+    cout << "\nВсего событий: " << superposition.size() << "\n";
+    cout << "Длительность: " << T << "\n";
+    cout << "Эмперическая интенсивность: " << emp_lambda << "\n";
+    cout << "Теоритическая интенсивность: " << real_lambda << "\n";
+
+    cout << "Отклонение: " << abs(emp_lambda - real_lambda) << "\n";
+    int max_int = 10;
+
+    vector<int> counts(max_int + 1, 0);
+
+    for (double interv : interval)
+    {
+        int idx = (int)interv;
+        if (idx > max_int)
+            idx = max_int;
+        counts[idx]++;
+    }
+
+    cout << "Интервал\tЧисло\tВероятность\n";
+    for (int i = 0; i < max_int; i++) {
+        double prob = (double)counts[i] / interval.size();
+        if (i < max_int) {
+            cout << i << "-" << i + 1 << "\t\t" << counts[i] << "\t\t" << setprecision(4) << prob << "\n";
+        }
+        else
+            cout << i << "+\t\t" << counts[i] << "\t\t" << setprecision(4) << prob << "\n";
+    }
+    return 0;
+}

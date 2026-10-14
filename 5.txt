@@ -1,0 +1,120 @@
+#include <iostream>
+#include <random>
+#include <chrono>
+#include <iomanip>
+#include <vector>
+#include <cmath>
+
+using namespace std;
+
+int main() {
+    setlocale(LC_ALL, "ru");
+
+    mt19937 mt{ static_cast<mt19937::result_type>(
+        chrono::steady_clock::now().time_since_epoch().count()
+    ) };
+
+    const int N = 20;
+    const int M = 10000;
+    const double a = 1.0, b = 7.0; // параметры равномерного распределения U[a,b]
+
+    // Интенсивность одного потока: lambda_i = 1 / E[tau] = 1 / ((a+b)/2)
+    double lambda_one = 1.0 / ((a + b) / 2.0);
+    double lambda_total = N * lambda_one; // интенсивность суперпозиции
+
+    cout << "Суперпозиция " << N << " потоков \n\n";
+    cout << "Каждый поток: интервалы = U[" << a << ", " << b << "]\n";
+    cout << "Интенсивность одного потока: " << lambda_one << "\n";
+    cout << "Теоретическая интенсивность суперпозиции: " << lambda_total << "\n\n";
+
+    uniform_real_distribution<double> dist{ a, b };
+
+    vector<double> T(N);
+    for (int i = 0; i < N; i++) {
+        T[i] = dist(mt);
+    }
+
+    vector<double> intervals;
+    intervals.reserve(M);
+
+    double systemtime = 0.0;
+    double prev_time = 0.0;
+
+    for (int k = 0; k < M; k++) {
+        int min_idx = 0;
+        for (int i = 1; i < N; i++) {
+            if (T[i] < T[min_idx]) min_idx = i;
+        }
+
+        systemtime = T[min_idx];
+
+        if (k > 0) {
+            intervals.push_back(systemtime - prev_time);
+        }
+        prev_time = systemtime;
+
+        // обновляем этот поток: генерируем новый интервал
+        T[min_idx] = systemtime + dist(mt);
+    }
+
+    // Эмпирическая интенсивность = M / общее_время
+    double empirical_lambda = M / systemtime;
+
+    cout << "Эмпирическая интенсивность суперпозиции: " << empirical_lambda << "\n";
+    cout << "Относительная ошибка: "
+        << abs(empirical_lambda - lambda_total) / lambda_total * 100 << " %\n\n";
+
+    // Построение гистограммы интервалов
+    const int BINS = 20;
+    double max_t = 5.0 / lambda_total; // обрезаем хвост
+    double bin_width = max_t / BINS;
+    vector<int> hist(BINS, 0);
+
+    for (double dt : intervals) {
+        if (dt < max_t) {
+            int idx = (int)(dt / bin_width);
+            if (idx >= BINS) idx = BINS - 1;
+            hist[idx]++;
+        }
+    }
+
+    cout << "Гистограмма интервалов\n";
+    cout << fixed << setprecision(3);
+    cout << "Интервал\tЭмп. P\t\tТеор. P (эксп.)\n";
+
+    for (int i = 0; i < BINS; i++) {
+        double t_left = i * bin_width;
+        double t_right = (i + 1) * bin_width;
+        double t_mid = (t_left + t_right) / 2.0;
+
+        // Эмпирическая вероятность (плотность)
+        double p_emp = (double)hist[i] / (intervals.size() * bin_width);
+
+        // Теоретическая плотность экспоненциального распределения: f(t) = lambda * exp(-lambda*t)
+        double p_theory = lambda_total * exp(-lambda_total * t_mid);
+
+        cout << "[" << t_left << ", " << t_right << ")\t"
+            << p_emp << "\t\t" << p_theory << "\n";
+    }
+
+    // Эмпирическая функция распределения F(t) = P(interval <= t)
+    sort(intervals.begin(), intervals.end());
+    cout << "\nЭмпирическая ФР F(t) vs теоретическая 1-exp(-lambda*t)\n";
+    cout << "t\t\tF_emp\t\tF_theory\n";
+
+    for (int p = 1; p <= 10; p++) {
+        int idx = (int)(p * intervals.size() / 10.0) - 1;
+        if (idx >= (int)intervals.size()) idx = intervals.size() - 1;
+        double t = intervals[idx];
+        double F_emp = (double)(idx + 1) / intervals.size();
+        double F_theory = 1.0 - exp(-lambda_total * t);
+        cout << t << "\t\t" << F_emp << "\t\t" << F_theory << "\n";
+    }
+
+    cout << "\nСовпадение эмпирической гистограммы с экспоненциальным\n";
+    cout << "распределением f(t) = " << lambda_total << "*exp(-"
+        << lambda_total << "*t) доказывает, что суперпозиция\n";
+    cout << N << " независимых равномерных потоков образует пуассоновский поток.\n";
+
+    return 0;
+}
